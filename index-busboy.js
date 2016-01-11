@@ -13,18 +13,23 @@ function md5(str) {
   return crypto.createHash('md5').update(str).digest('hex');
 }
 
-exports.middleware = function(req, res, next) {
+exports.middleware = function(req, res, next, options) {
   var contentType = req.get('content-type');
   if (!contentType || !~contentType.indexOf('multipart/form-data')) return next();
 
   var attrs = {};
   var timeout;
 
-  var busboy = new Busboy({ headers: req.headers });
+  var busboy = req.busboy = new Busboy({ headers: req.headers });
   busboy.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
+    req._abort = (options && options.validate && options.validate[fieldname] && options.validate[fieldname](req,res,next,val) === false);
     attrs[fieldname] = val;
   });
   busboy.on('file', function(fieldname, file, filename, encoding, mimetype) {
+    if (req._abort) {
+      file.resume();
+      return;
+    }
     attrs.chunk = parseInt(attrs.chunk, 10);
     attrs.chunks = parseInt(attrs.chunks, 10);
 
@@ -85,7 +90,11 @@ exports.middleware = function(req, res, next) {
     upload.stream
     .on('data', function() {
       if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(onError, 3000);
+      if (req._abort) {
+        file.resume();
+      } else {
+        timeout = setTimeout(onError, 3000);
+      }
     })
     .on('error', function(err) {
       if (timeout) clearTimeout(timeout);
