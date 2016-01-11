@@ -35,6 +35,10 @@ exports.middleware = function(req, res, next, options) {
 
     var uploadId = id(req, attrs);
     var upload = req.plupload = uploads[uploadId];
+    
+    if (upload) {
+      upload.fields = attrs;
+    }
 
     // console.log(filename, attrs.chunk, attrs.chunks, 'begin');
     if (attrs.chunk === 0) {
