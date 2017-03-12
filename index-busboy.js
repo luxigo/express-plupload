@@ -6,7 +6,7 @@ var uploads = {};
 
 function id(req, options) {
   var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-  return md5([ip, options.chunks, options.name, options.filename, req.path].join());
+  return md5(ip+options.sha256+options.timestamp);
 }
 
 function md5(str) {
@@ -19,6 +19,7 @@ exports.middleware = function(req, res, next, options) {
 
   var attrs = {};
   var timeout;
+  var upload;
 
   var busboy = req.busboy = new Busboy({ headers: req.headers });
   busboy.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
@@ -34,13 +35,15 @@ exports.middleware = function(req, res, next, options) {
     attrs.chunks = parseInt(attrs.chunks, 10);
 
     var uploadId = id(req, attrs);
-    var upload = req.plupload = uploads[uploadId];
+//    console.log(uploads);
+    upload = req.plupload = uploads[uploadId];
     
     if (upload) {
       upload.fields = attrs;
     }
 
-    // console.log(filename, attrs.chunk, attrs.chunks, 'begin');
+    console.log(attrs.name, attrs.chunk, attrs.chunks, 'begin');
+//      console.log(req.plupload);
     if (attrs.chunk === 0) {
       if (upload && upload.stream) {
         upload.stream.destroy();
@@ -54,8 +57,8 @@ exports.middleware = function(req, res, next, options) {
         completedOffset: 0,
         fields: attrs
       };
-    } else if (!upload || attrs.chunk !== upload.nextChunk) {
-      return next(new Error('expecting chunk ' + (upload && upload.nextChunk || 0) + ' got ' + attrs.chunk));
+    } else if (!upload  || attrs.chunk !== upload.nextChunk) {
+      return next(new Error(!upload?'upload not defined':('expecting chunk ' + (upload && upload.nextChunk || 0) + ' got ' + attrs.chunk)));
     }
 
     // Increment next chunk
@@ -78,6 +81,7 @@ exports.middleware = function(req, res, next, options) {
     }
 
     function cleanUp() {
+//      console.log('cleanup',uploadId);
       if (!uploads[uploadId] || upload.stream) return;
       delete(uploads[uploadId]);
     }
@@ -97,7 +101,7 @@ exports.middleware = function(req, res, next, options) {
       if (req._abort) {
         file.resume();
       } else {
-        timeout = setTimeout(onError, 3000);
+        timeout = setTimeout(onError, 3600000);
       }
     })
     .on('error', function(err) {
@@ -116,7 +120,7 @@ exports.middleware = function(req, res, next, options) {
     next();
   });
   busboy.on('finish', function() {
-    // console.log(filename, attrs.chunk, attrs.chunks, 'finish');
+    console.log(attrs.name, attrs.chunk, attrs.chunks, 'finish');
   });
   req.pipe(busboy);
 };
